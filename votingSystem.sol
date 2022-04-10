@@ -3,79 +3,133 @@ pragma solidity ^0.8.7;
 
 contract Vote{
 
+    //storage
+    uint256 public candidateAmount = 0;
+    mapping(uint256 => Candidate) public candidates;
+    uint256 public candidateLimit = 5;
+
+    address payable public desk;
+
+    uint deployDate;
+    bool voteDone = false;
+    
+    modifier onlyVoter() {
+        require(msg.sender == voter.wallet, "Only voter can call this method!");
+        _;
+    }
+    
+    function bet() onlyVoter external payable {
+        desk.transfer(address(this).balance);
+    }
+
     struct Candidate{
         string name;
         string surname;
         int age;
         int voteCount;
+        Voter[] votes;
+        address wallet;
     }
-
-    Candidate can1;
-    Candidate can2;
-    Candidate can3;
 
     struct Voter{
         string name;
         string surname;
         int age;
         bool isVoted;
-    }
-    Voter voter;
-
-    constructor() {
-        can1 = Candidate("George","Philippe",20, 0);
-        can2 = Candidate("Thedor","Gatemp", 45, 0);
-        can3 = Candidate("Fred","Bullock", 65, 0);
+        address wallet;
     }
 
-    function setVoter(string memory name, string memory surname, int age) public returns (string memory){
+    Voter public voter;
+    Voter[] public voters;
+
+    constructor(address payable _desk) {
+        desk = _desk;
+    }
+
+    function addVoter(string memory name, string memory surname, int age, address wallet) public returns (string memory){
         if (age < 18){
             return "You are too young to vote!";
         }
-        voter = Voter(name, surname, age, false);
+        for(uint256 i = 0; i < voters.length; i++){
+            if (wallet == voters[i].wallet){
+                voter = voters[i];
+                return "This voter is already added!\nSet the current voter to it.";
+            }
+        }
+        voter = Voter(name, surname, age, false, wallet);
+        voters.push(voter);
         return "You can vote successfully now!";
     }
 
-    function getVoterInfo() public view returns(Voter memory){
-        return voter;
-    }
-
-    function getCandidateInfo(int candidate) public view returns(Candidate memory){
-        if (candidate == 1)
-            return can1;
-        else if (candidate == 2)
-            return can2;
-        else if (candidate == 3)
-            return can3;
-        return can1;
-    }
-
-    function vote(int candidate) public returns (string memory) {
+    function vote(uint256 candidate) public returns (string memory) {
+        if (block.timestamp >= (deployDate + 30 seconds)){
+            voteDone = true;
+            return "You can't vote now the election is completed";
+        }
+        if (candidateAmount != 4)
+            return "Election will start once the candidates are filled!";
         if (keccak256(abi.encodePacked(voter.name)) == keccak256(abi.encodePacked("")))
             return "Please set your information correctly";
         
         if(voter.isVoted)
             return "You have already voted";
+        if (!voteDone){
+            setVoteCount(candidate);
+            voter.isVoted = true;
+            return string(abi.encodePacked("You have voted for ", candidates[candidate].name));
+        }
 
-        setVoteCount(candidate);
-        voter.isVoted = true;
-        return string(abi.encodePacked("You have voted for ", getCandidateInfo(candidate).name));
+        return "Election is done you can't vote anymore get the results from getElectionLeader!";
     }
 
-    function setVoteCount(int candidate) private {
-        if (candidate == 1)
-            can1.voteCount += 1;
-        else if (candidate == 2)
-            can2.voteCount += 1;
-        else if (candidate == 3)
-            can3.voteCount += 1;
+    function addCandidate (string memory name, string memory surname, int age, address wallet) public returns (string memory){
+        if (age <= 18)
+            return "You are too young to be a candidate!";
+        if(candidateAmount == candidateLimit){
+            deployDate = block.timestamp;
+            return "Maximum candidate amount is reached!";
+        }
+        
+        for(uint256 i = 0; i < candidateAmount; i++){
+            if (wallet == candidates[i].wallet){
+                return "This candidate is already added!";
+            }
+        }
+
+        Candidate storage candidate = candidates[candidateAmount];
+        candidate.name = name;
+        candidate.surname = surname;
+        candidate.age = age;
+        candidateAmount += 1;
+        return "Candidate successfully added.";
     }
 
-    function getVoteCount(int candidate) public view returns (int){
-        return getCandidateInfo(candidate).voteCount;
+    function setVoteCount(uint256 candidate) private {
+        candidates[candidate].voteCount += 1;
     }
 
-    function getVoteLeader() public view returns (string memory){
+    function getElectionLeader() public returns (string memory){
+        int maxVoteCount = 0;
+        uint256 maxVoted = 0;
+        uint256 maxVoted2 = 0;
+        bool draw = false;
+        if(block.timestamp >= (deployDate + 10 minutes)){
+            voteDone = true;
+        }
+        for (uint256 i = 0; i < candidateAmount; i++){
+            if (candidates[i].voteCount > maxVoteCount){
+                maxVoteCount = candidates[i].voteCount;
+                maxVoted = i;
+            } else if (candidates[i].voteCount >= maxVoteCount){
+                maxVoted2 = i;
+                draw = true;
+            }
+        }
+        if (draw)
+            return string(abi.encodePacked("Election is a draw, ", abi.encodePacked(candidates[maxVoted].name, abi.encodePacked(" and ", abi.encodePacked(candidates[maxVoted2].name, " won!")))));
+        
+        return string(abi.encodePacked("Election leader is currently ", candidates[maxVoted].name));
+        /*
         if (can1.voteCount > can2.voteCount && can1.voteCount > can3.voteCount)
             return string(abi.encodePacked("Vote leader is currently ", can1.name));
         else if (can2.voteCount > can1.voteCount && can2.voteCount > can3.voteCount)
@@ -89,6 +143,6 @@ contract Vote{
         else if (can1.voteCount == can3.voteCount && can1.voteCount > can2.voteCount)
             return string(abi.encodePacked(string(abi.encodePacked(can1.name, " and ")), string(abi.encodePacked(can3.name, string(abi.encodePacked(" are equal and ", string(abi.encodePacked(can2.name, " is last."))))))));
         else if (can3.voteCount == can2.voteCount && can3.voteCount > can1.voteCount)
-            return string(abi.encodePacked(string(abi.encodePacked(can3.name, " and ")), string(abi.encodePacked(can2.name, string(abi.encodePacked(" are equal and ", string(abi.encodePacked(can1.name, " is last."))))))));
+            return string(abi.encodePacked(string(abi.encodePacked(can3.name, " and ")), string(abi.encodePacked(can2.name, string(abi.encodePacked(" are equal and ", string(abi.encodePacked(can1.name, " is last.")))))))); */
     }
 }
