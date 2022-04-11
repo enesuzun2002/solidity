@@ -4,9 +4,7 @@ pragma solidity ^0.8.7;
 contract Vote{
 
     //storage
-    uint256 public candidateAmount = 0;
-    mapping(uint256 => Candidate) public candidates;
-    uint256 public candidateLimit = 5;
+    uint256 public candidateLimit = 2;
     uint256 maxVoted = 0;
     uint256 maxVoted2 = 0;
     bool draw = false;
@@ -31,7 +29,6 @@ contract Vote{
         string surname;
         int age;
         int voteCount;
-        Voter[] votes;
         address payable wallet;
         uint256 betAmount;
     }
@@ -49,17 +46,21 @@ contract Vote{
     Voter public voter;
     Voter[] public voters;
 
-    constructor(address payable _desk) {
+    Candidate[] public candidates;
+
+    constructor(address payable _desk) payable {
         desk = _desk;
     }
 
     function bet(uint256 candidate) onlyVoter external payable {
         for(uint256 i = 0; i < voters.length; i++){
             if (msg.sender == voters[i].wallet)
-                if (!voters[i].isVoted)
+                if (voters[i].betAmount == 0 && voters[i].isVoted && voters[i].votedTo == candidate)
                     voters[i].betAmount = address(this).balance;
                 else
                     return;
+            else
+                return;
         }
         candidates[candidate].betAmount += address(this).balance;
         desk.transfer(address(this).balance);
@@ -83,12 +84,21 @@ contract Vote{
         return "You can vote successfully now!";
     }
 
-    function vote(uint256 candidate) public returns (string memory) {
+    function vote(uint256 candidate) onlyVoter public returns (string memory) {
+        if(msg.sender != voter.wallet){
+            for(uint256 i = 0; i < voters.length; i++){
+                if (msg.sender == voters[i].wallet){
+                    voter = voters[i];
+                }
+            }
+            if (msg.sender != voter.wallet)
+                return "You aren't a voter!";
+        }
         if (block.timestamp >= (deployDate + 3 minutes)){
             voteDone = true;
             return "You can't vote now the election is completed";
         }
-        if (candidateAmount != 4)
+        if (candidates.length != candidateLimit)
             return "Election will start once the candidates are filled!";
         if (keccak256(abi.encodePacked(voter.name)) == keccak256(abi.encodePacked("")))
             return "Please set your information correctly";
@@ -105,29 +115,25 @@ contract Vote{
         return "Election is done you can't vote anymore get the results from getElectionLeader!";
     }
 
-    function addCandidate (string memory name, string memory surname, int age, address wallet) public returns (string memory){
+    function addCandidate (string memory name, string memory surname, int age, address payable wallet) public returns (string memory){
         if (age <= 18)
             return "You are too young to be a candidate!";
 
         if (age >= 65)
             return "You are too old to be a candidate!";
 
-        if(candidateAmount == candidateLimit){
+        for(uint256 i = 0; i < candidates.length; i++){
+            if (wallet == candidates[i].wallet)
+                return "This candidate is already added!";
+        }
+
+        if(candidates.length == candidateLimit){
             deployDate = block.timestamp;
             return "Maximum candidate amount is reached!";
         }
-        
-        for(uint256 i = 0; i < candidateAmount; i++){
-            if (wallet == candidates[i].wallet){
-                return "This candidate is already added!";
-            }
-        }
 
-        Candidate storage candidate = candidates[candidateAmount];
-        candidate.name = name;
-        candidate.surname = surname;
-        candidate.age = age;
-        candidateAmount += 1;
+        Candidate memory can = Candidate(name, surname, age, 0, wallet, 0);
+        candidates.push(can);
         return "Candidate successfully added.";
     }
 
@@ -155,10 +161,11 @@ contract Vote{
         /* if(block.timestamp >= (deployDate + 10 minutes)){
             voteDone = true;
         } */
-        for (uint256 i = 0; i < candidateAmount; i++){
+        for (uint256 i = 0; i < candidates.length; i++){
             if (candidates[i].voteCount > maxVoteCount){
                 maxVoteCount = candidates[i].voteCount;
                 maxVoted = i;
+                draw = false;
             } else if (candidates[i].voteCount >= maxVoteCount){
                 maxVoted2 = i;
                 draw = true;
