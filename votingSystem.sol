@@ -3,27 +3,35 @@ pragma solidity ^0.8.7;
 
 contract Vote{
 
-    //storage
+    // Adayların sayı sınırı
     uint256 public candidateLimit = 2;
+    // En yüksek oyu alan adayları kaydeder
     uint256 maxVoted = 0;
     uint256 maxVoted2 = 0;
+    // Seçimin berabere bitmesi durumu
     bool draw = false;
 
+    // Masa Adresini saklar
     address payable public desk;
 
+    // Kontratın deploy edildiği zamanı gösterir
     uint deployDate;
+    // Seçim bitti mi bitmedi mi kontrol eder
     bool voteDone = false;
     
+    // Çağrıldığı fonksiyonların sadece seçmen tarafından çalıştırılmış olmasını kontrol eder
     modifier onlyVoter() {
         require(msg.sender == voter.wallet, "Only voter can call this method!");
         _;
     }
 
+    // Çağrıldığı fonksiyonların sadece masa tarafından çalıştırılmış olmasını kontrol eder
     modifier onlyDesk() {
         require(msg.sender == desk, "Only desk can call this method!");
         _;
     }
 
+    // Aday'ın verilerini tutan struct yapısı
     struct Candidate{
         string name;
         string surname;
@@ -33,6 +41,7 @@ contract Vote{
         uint256 betAmount;
     }
 
+    // Seçmenin verilerini tutan struct yapısı
     struct Voter{
         string name;
         string surname;
@@ -43,15 +52,20 @@ contract Vote{
         uint256 betAmount;
     }
 
+    // Seçmen oluşturma
     Voter public voter;
+    // Yeni eklenen seçmenlerin kaydedileceği dizi
     Voter[] public voters;
 
+    // Yeni eklenen adayların kaydedileceği dizi
     Candidate[] public candidates;
 
+    // Yapıcı metod
     constructor(address payable _desk) payable {
         desk = _desk;
     }
 
+    // Bahis fonksiyonu
     function bet(uint256 candidate) onlyVoter external payable {
         for(uint256 i = 0; i < voters.length; i++){
             if (msg.sender == voters[i].wallet)
@@ -66,6 +80,7 @@ contract Vote{
         desk.transfer(address(this).balance);
     }
 
+    // Yeni seçmen ekler
     function addVoter(string memory name, string memory surname, int age, address payable wallet) public returns (string memory){
         if (age < 18)
             return "You are too young to vote!";
@@ -84,6 +99,7 @@ contract Vote{
         return "You can vote successfully now!";
     }
 
+    // Oy verir
     function vote(uint256 candidate) onlyVoter public returns (string memory) {
         if(msg.sender != voter.wallet){
             for(uint256 i = 0; i < voters.length; i++){
@@ -115,6 +131,7 @@ contract Vote{
         return "Election is done you can't vote anymore get the results from getElectionLeader!";
     }
 
+    // Aday ekler
     function addCandidate (string memory name, string memory surname, int age, address payable wallet) public returns (string memory){
         if (age <= 18)
             return "You are too young to be a candidate!";
@@ -137,10 +154,12 @@ contract Vote{
         return "Candidate successfully added.";
     }
 
+    // Aday'ın oy sayısını arttırır.
     function setVoteCount(uint256 candidate) private {
         candidates[candidate].voteCount += 1;
     }
 
+    // Sadece masa tarafından çalıştırılabilen seçim bitince bahis ödüllerini yatıran fonksiyon
     function claimBet() onlyDesk public payable {
         if(voteDone){
             getElectionLeader();
@@ -156,11 +175,9 @@ contract Vote{
         }
     }
 
+    // Seçim liderini döndürür
     function getElectionLeader() public returns (string memory){
         int maxVoteCount = 0;
-        /* if(block.timestamp >= (deployDate + 10 minutes)){
-            voteDone = true;
-        } */
         for (uint256 i = 0; i < candidates.length; i++){
             if (candidates[i].voteCount > maxVoteCount){
                 maxVoteCount = candidates[i].voteCount;
